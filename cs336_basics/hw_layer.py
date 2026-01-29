@@ -55,13 +55,13 @@ class Linear(nn.Module):
 
 
 class Embedding(nn.Module):
-    def __init__(self, num_embeddings, embedding_dim, device=None, dtype=None):
+    def __init__(self, vocab_size: int, d_model: int, device=None, dtype=None):
         super().__init__()
-        self.num_embeddings = num_embeddings
-        self.embedding_dim = embedding_dim
+        self.vocab_size = vocab_size
+        self.d_model = d_model
 
         self.weight = nn.Parameter(
-            torch.empty((num_embeddings, embedding_dim), device=device, dtype=dtype)
+            torch.empty((vocab_size, d_model), device=device, dtype=dtype)
         )
         std = 1
         init_weights(self, std)
@@ -237,25 +237,33 @@ class TransformerLM(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        context_length: int,
+        d_model: int,
         num_layers: int,
+        num_heads: int,
         rope: RoPE | None = None,
+        d_ff: int | None = None,
+        device=None,
+        dtype=None,
     ):
         super().__init__()
-        self.token_embedding = Embedding(vocab_size, context_length)
+        self.token_embedding = Embedding(
+            vocab_size, d_model, device=device, dtype=dtype
+        )
         self.layers = nn.ModuleList(
             [
                 TransformerBlock(
-                    d_model=context_length,
-                    num_heads=8,
-                    d_ff=4 * context_length,
+                    d_model=d_model,
+                    num_heads=num_heads,
+                    d_ff=d_ff if d_ff is not None else 4 * d_model,
                     rope=rope,
+                    device=device,
+                    dtype=dtype,
                 )
                 for _ in range(num_layers)
             ]
         )
-        self.ln_f = RmsNorm(d_model=context_length)
-        self.output_projection = Linear(context_length, vocab_size)
+        self.ln_f = RmsNorm(d_model=d_model, device=device, dtype=dtype)
+        self.output_projection = Linear(d_model, vocab_size, device=device, dtype=dtype)
 
     def forward(
         self,
