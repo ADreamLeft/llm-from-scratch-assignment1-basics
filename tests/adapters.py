@@ -24,6 +24,7 @@ from cs336_basics.hw_layer import (
 )
 from cs336_basics.hw_tokenizer import TestTokenizer
 from cs336_basics.hw_train_bpe import test_run_train_bpe
+from cs336_basics.hw_train_transformer import AdamWOptimizer, cross_entropy
 
 
 def run_linear(
@@ -592,7 +593,7 @@ def run_cross_entropy(
     Returns:
         Float[Tensor, ""]: The average cross-entropy loss across examples.
     """
-    raise NotImplementedError
+    return cross_entropy(inputs, targets)
 
 
 def run_gradient_clipping(
@@ -613,7 +614,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamWOptimizer
 
 
 def run_get_lr_cosine_schedule(
