@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 import regex as re
 
 # 获取 CPU 核心数，保留一个核心给主进程或系统
-CPU = os.cpu_count() or 1
+CPU = os.cpu_count()
 # GPT-2 分割模式 regex
 GPT2_SPLIT_PATTERN = (
     r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
@@ -127,7 +127,7 @@ def pretokenize_text(
     if special_tokens is None:
         special_tokens = []
 
-    num_processes = max(1, CPU - 1)
+    num_processes = max(1, CPU)
 
     boundaries = find_chunk_boundaries(text, num_processes, special_tokens)
 
