@@ -1,3 +1,4 @@
+import heapq
 import multiprocessing
 import os
 from collections import Counter, defaultdict
@@ -163,15 +164,36 @@ def get_stats(
     return pairs_counts, pairs_words
 
 
+class HeapItem:
+    def __init__(
+        self, count: int, item0_bytes: bytes, item1_bytes: bytes, pair: tuple[int, int]
+    ):
+        self.count = count
+        self.item0_bytes = item0_bytes
+        self.item1_bytes = item1_bytes
+        self.pair = pair
+
+    def __lt__(self, other):
+        # We want to pop the item with the LARGEST (count, item0_bytes, item1_bytes).
+        # In a min-heap, the smallest item is popped first.
+        # So we define 'lt' such that a larger item is considered 'smaller'.
+        if self.count != other.count:
+            return self.count > other.count
+        if self.item0_bytes != other.item0_bytes:
+            return self.item0_bytes > other.item0_bytes
+        return self.item1_bytes > other.item1_bytes
+
+
 def update_stats(
     pairs_counts: dict[tuple[int, int], int],
     pairs_words: dict[tuple[int, int], set[tuple[int, ...]]],
     best_pair: tuple[int, int],
     new_idx: int,
     token_counts: Counter,
-) -> tuple[dict[tuple[int, int], int], dict[tuple[int, int], set[tuple[int, ...]]]]:
+) -> set[tuple[int, int]]:
     words_containing_pair = list(pairs_words[best_pair])
     p0, p1 = best_pair
+    changes = set()
 
     for word in words_containing_pair:
         count = token_counts[word]
@@ -197,6 +219,7 @@ def update_stats(
         for i in range(len(word) - 1):
             old_pair = (word[i], word[i + 1])
             pairs_counts[old_pair] -= count
+            changes.add(old_pair)
 
             if word in pairs_words[old_pair]:
                 pairs_words[old_pair].remove(word)
@@ -212,6 +235,7 @@ def update_stats(
             new_pair = (new_word[i], new_word[i + 1])
             pairs_counts[new_pair] += count
             pairs_words[new_pair].add(new_word)
+            changes.add(new_pair)
 
     # 清理已合并的 pair
     if best_pair in pairs_counts:
@@ -219,7 +243,7 @@ def update_stats(
     if best_pair in pairs_words:
         del pairs_words[best_pair]
 
-    return pairs_counts, pairs_words
+    return changes
 
 
 def test_run_train_bpe(
@@ -257,18 +281,21 @@ def test_run_train_bpe(
 
     pairs_counts, pairs_words = get_stats(token_counts)
 
-    for i in range(num_merges):
-        if not pairs_counts:
-            break
+    hq = []
+    for pair, count in pairs_counts.items():
+        item = HeapItem(count, vocab[pair[0]], vocab[pair[1]], pair)
+        heapq.heappush(hq, item)
 
-        best_pair = max(
-            pairs_counts,
-            key=lambda p: (
-                pairs_counts[p],  # 1. 频率
-                vocab[p[0]],  # 2. 第一个 Token 的字节内容
-                vocab[p[1]],  # 3. 第二个 Token 的字节内容
-            ),
-        )
+    for i in range(num_merges):
+        best_pair = None
+        while hq:
+            top_item = heapq.heappop(hq)
+            if pairs_counts.get(top_item.pair, -1) == top_item.count:
+                best_pair = top_item.pair
+                break
+
+        if best_pair is None:
+            break
 
         new_idx = current_vocab_len + i
         part0_bytes = vocab[best_pair[0]]
@@ -277,8 +304,14 @@ def test_run_train_bpe(
         merges.append((part0_bytes, part1_bytes))
         vocab[new_idx] = part0_bytes + part1_bytes
 
-        pairs_counts, pairs_words = update_stats(
+        changes = update_stats(
             pairs_counts, pairs_words, best_pair, new_idx, token_counts
         )
+
+        for pair in changes:
+            if pair in pairs_counts:
+                count = pairs_counts[pair]
+                item = HeapItem(count, vocab[pair[0]], vocab[pair[1]], pair)
+                heapq.heappush(hq, item)
 
     return vocab, merges
